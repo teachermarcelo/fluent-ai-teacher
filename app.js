@@ -152,6 +152,25 @@ async function saveLesson(d,r){
 }
 
 function renderAI(r,d){
+  const pages=Array.isArray(r.pages)?r.pages:[];
+  if(pages.length){
+    return '<div class="resource-pack">'+pages.map((p,i)=>{
+      const type=esc(p.type||"Lesson page");
+      const title=esc(p.title||("Page "+(i+1)));
+      const intro=esc(p.intro||"");
+      const items=Array.isArray(p.items)?p.items:[];
+      const questions=Array.isArray(p.questions)?p.questions:[];
+      const answers=Array.isArray(p.answers)?p.answers:[];
+      const examples=Array.isArray(p.examples)?p.examples:[];
+      return '<section class="resource-page"><div class="page-top"><span class="page-number">'+(i+1)+'</span><span class="page-type">'+type+'</span></div><h1>'+title+'</h1>'+
+        (intro?'<p class="page-intro">'+intro+'</p>':'')+
+        (examples.length?'<div class="example-grid">'+examples.map(x=>'<div class="example-card">'+esc(x)+'</div>').join("")+'</div>':'')+
+        (items.length?'<div class="resource-items">'+items.map((x,j)=>'<div class="resource-item"><b>'+(j+1)+'.</b><span>'+esc(typeof x==="string"?x:x.text||"")+'</span></div>').join("")+'</div>':'')+
+        (questions.length?'<div class="question-list">'+questions.map((x,j)=>'<div class="question"><b>'+(j+1)+'.</b> '+esc(x)+'</div>').join("")+'</div>':'')+
+        (answers.length?'<div class="answer-box"><b>ANSWER KEY</b>'+answers.map((x,j)=>'<div>'+(j+1)+'. '+esc(x)+'</div>').join("")+'</div>':'')+
+      '</section>';
+    }).join("")+'</div>';
+  }
   const objectives=Array.isArray(r.objectives)?r.objectives:[];
   const vocab=Array.isArray(r.vocabulary)?r.vocabulary:[];
   const worksheet=Array.isArray(r.worksheet)?r.worksheet:[];
