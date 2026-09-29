@@ -125,7 +125,7 @@ async function generateWithAI(d){
       body:JSON.stringify({...d,resourceType:kind})
     });
     const json=await res.json();
-    if(!res.ok)throw new Error(json.error||"Não foi possível gerar o material.");
+    if(!res.ok){ const detail=json.detail ? (typeof json.detail==="string" ? json.detail : JSON.stringify(json.detail)) : ""; throw new Error((json.error||"Não foi possível gerar o material.")+(detail ? " — "+detail : "")); }
     if($("#output"))$("#output").innerHTML=renderAI(json.resource||{},d);
     if(kind==="lesson")await saveLesson(d,json.resource||{});
   }catch(error){
