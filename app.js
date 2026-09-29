@@ -2,14 +2,20 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 
 const SUPABASE_URL="https://rvgcniaowzmsudzliozf.supabase.co";
 const SUPABASE_KEY="sb_publishable_N_xCS0lbbTvG7qWTpAw0ag_vlg1lbHb";
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const FUNCTION_URL=SUPABASE_URL+"/functions/v1/fat-generate-lesson";
 
+let supabaseClient=null;
 let modal=$("#modal"),preview=$("#preview"),page=1,kind="lesson",currentSession=null;
+
+function onClick(selector,handler){
+  const el=$(selector);
+  if(el) el.addEventListener("click",handler);
+}
 
 function show(id){
   $$(".view").forEach(v=>v.classList.remove("active"));
-  const v=$("#"+id); if(v)v.classList.add("active");
+  const v=$("#"+id);
+  if(v)v.classList.add("active");
   $$("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
   const t=$("#title");
   if(t)t.textContent=id==="home"?"What shall we create today? ✨":(id==="admin"?"Creator & Admin":id.charAt(0).toUpperCase()+id.slice(1));
@@ -17,20 +23,25 @@ function show(id){
 
 function openGen(k,t){
   kind=k;
-  $("#modalTitle").textContent={lesson:"Create a lesson",series:"Create a lesson series",sheet:"Create an activity sheet",workbook:"Create a workbook"}[k]||"Create a resource";
-  if(t)$("#topic").value=t+" — English practice";
-  page=1; showPage(); modal.classList.add("show");
+  const title=$("#modalTitle");
+  if(title)title.textContent={lesson:"Create a lesson",series:"Create a lesson series",sheet:"Create an activity sheet",workbook:"Create a workbook"}[k]||"Create a resource";
+  if(t&&$("#topic"))$("#topic").value=t+" — English practice";
+  page=1; showPage();
+  if(modal)modal.classList.add("show");
 }
 
-function closeAll(){modal.classList.remove("show");preview.classList.remove("show")}
+function closeAll(){
+  if(modal)modal.classList.remove("show");
+  if(preview)preview.classList.remove("show");
+}
 
 function showPage(){
   $$(".wizard-page").forEach(x=>x.classList.toggle("active",+x.dataset.page===page));
   $$(".step").forEach((x,i)=>x.classList.toggle("active",i===page-1));
-  $("#pageLabel").textContent="Step "+page+" of 3";
-  $("#back").style.visibility=page===1?"hidden":"visible";
-  $("#next").hidden=page===3;
-  $("#generate").hidden=page!==3;
+  const label=$("#pageLabel"); if(label)label.textContent="Step "+page+" of 3";
+  const back=$("#back"); if(back)back.style.visibility=page===1?"hidden":"visible";
+  const next=$("#next"); if(next)next.hidden=page===3;
+  const generate=$("#generate"); if(generate)generate.hidden=page!==3;
 }
 
 function setAuthMessage(message,error=false){
@@ -40,53 +51,73 @@ function setAuthMessage(message,error=false){
 }
 
 async function refreshAuth(){
-  const {data}=await supabase.auth.getSession();
-  currentSession=data.session;
-  const user=data.session?.user;
-  $("#authStatus").textContent=user?(user.email||"Connected"):"Not connected";
-  $("#signOut").hidden=!user;
-  $("#signIn").hidden=!!user;
-  $("#signUp").hidden=!!user;
-  $("#authEmail").hidden=!!user;
-  $("#authPassword").hidden=!!user;
-  setAuthMessage(user?"Connected — AI generation is available.":"Entre para salvar e gerar com IA.");
+  if(!supabaseClient){
+    currentSession=null;
+    if($("#authStatus"))$("#authStatus").textContent="Not connected";
+    setAuthMessage("Sistema de login carregando...");
+    return;
+  }
+  try{
+    const {data}=await supabaseClient.auth.getSession();
+    currentSession=data?.session||null;
+    const user=currentSession?.user;
+    if($("#authStatus"))$("#authStatus").textContent=user?(user.email||"Connected"):"Not connected";
+    if($("#signOut"))$("#signOut").hidden=!user;
+    if($("#signIn"))$("#signIn").hidden=!!user;
+    if($("#signUp"))$("#signUp").hidden=!!user;
+    if($("#authEmail"))$("#authEmail").hidden=!!user;
+    if($("#authPassword"))$("#authPassword").hidden=!!user;
+    setAuthMessage(user?"Connected — AI generation is available.":"Entre para salvar e gerar com IA.");
+  }catch(error){
+    console.error("Auth refresh error:",error);
+    setAuthMessage("Erro ao verificar a sessão.",true);
+  }
 }
 
 async function signIn(){
-  const email=$("#authEmail").value.trim(),password=$("#authPassword").value;
-  if(!email||!password)return setAuthMessage("Informe e-mail e senha.",true);
+  if(!supabaseClient){
+    setAuthMessage("O sistema de login ainda não carregou. Recarregue a página e tente novamente.",true);
+    return;
+  }
+  const email=$("#authEmail")?.value.trim()||"",password=$("#authPassword")?.value||"";
+  if(!email||!password){setAuthMessage("Informe e-mail e senha.",true);return;}
   setAuthMessage("Entrando...");
-  const {error}=await supabase.auth.signInWithPassword({email,password});
-  if(error)return setAuthMessage(error.message,true);
-  setAuthMessage("Login realizado.");
+  const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error){setAuthMessage(error.message,true);return;}
   await refreshAuth();
 }
 
 async function signUp(){
-  const email=$("#authEmail").value.trim(),password=$("#authPassword").value;
-  if(!email||password.length<6)return setAuthMessage("Use um e-mail e uma senha com pelo menos 6 caracteres.",true);
+  if(!supabaseClient){
+    setAuthMessage("O sistema de login ainda não carregou. Recarregue a página e tente novamente.",true);
+    return;
+  }
+  const email=$("#authEmail")?.value.trim()||"",password=$("#authPassword")?.value||"";
+  if(!email||password.length<6){setAuthMessage("Use um e-mail e uma senha com pelo menos 6 caracteres.",true);return;}
   setAuthMessage("Criando conta...");
-  const {error}=await supabase.auth.signUp({email,password});
-  if(error)return setAuthMessage(error.message,true);
+  const {error}=await supabaseClient.auth.signUp({email,password});
+  if(error){setAuthMessage(error.message,true);return;}
   setAuthMessage("Conta criada. Se a confirmação por e-mail estiver ativa, confirme seu e-mail e depois entre.");
 }
 
 async function signOut(){
-  await supabase.auth.signOut();
+  if(!supabaseClient)return;
+  await supabaseClient.auth.signOut();
   await refreshAuth();
 }
 
 async function generateWithAI(d){
-  if(!currentSession){
+  if(!supabaseClient||!currentSession){
     setAuthMessage("Faça login para usar a geração com IA.",true);
     show("admin");
     return;
   }
-  $("#previewTitle").textContent=d.topic;
-  $("#output").innerHTML='<div class="ai-loading"><h3>✨ Fluent AI está criando seu material...</h3><p>Gerando conteúdo alinhado ao CEFR '+esc(d.level)+'.</p></div>';
-  modal.classList.remove("show"); preview.classList.add("show");
-  const {data:{session}}=await supabase.auth.getSession();
-  if(!session){currentSession=null;return refreshAuth();}
+  if($("#previewTitle"))$("#previewTitle").textContent=d.topic;
+  if($("#output"))$("#output").innerHTML='<div class="ai-loading"><h3>✨ Fluent AI está criando seu material...</h3><p>Gerando conteúdo alinhado ao CEFR '+esc(d.level)+'.</p></div>';
+  if(modal)modal.classList.remove("show");
+  if(preview)preview.classList.add("show");
+  const {data:{session}}=await supabaseClient.auth.getSession();
+  if(!session){currentSession=null;await refreshAuth();return;}
   try{
     const res=await fetch(FUNCTION_URL,{
       method:"POST",
@@ -95,25 +126,28 @@ async function generateWithAI(d){
     });
     const json=await res.json();
     if(!res.ok)throw new Error(json.error||"Não foi possível gerar o material.");
-    $("#output").innerHTML=renderAI(json.resource,d);
-    if(kind==="lesson")await saveLesson(d,json.resource);
+    if($("#output"))$("#output").innerHTML=renderAI(json.resource||{},d);
+    if(kind==="lesson")await saveLesson(d,json.resource||{});
   }catch(error){
-    $("#output").innerHTML='<div class="ai-error"><b>Não foi possível gerar agora.</b><p>'+esc(error.message)+'</p><p>Verifique se a chave OPENAI_API_KEY foi configurada no Supabase Edge Function.</p></div>';
+    console.error(error);
+    if($("#output"))$("#output").innerHTML='<div class="ai-error"><b>Não foi possível gerar agora.</b><p>'+esc(error.message)+'</p><p>Verifique OPENAI_API_KEY e a Edge Function no Supabase.</p></div>';
   }
 }
 
 async function saveLesson(d,r){
-  const {data:{user}}=await supabase.auth.getUser();
+  if(!supabaseClient)return;
+  const {data:{user}}=await supabaseClient.auth.getUser();
   if(!user)return;
   const payload={
     owner_id:user.id,title:r.title||d.topic,topic:d.topic,cefr_level:d.level,
     duration_minutes:parseInt(d.duration)||90,audience:d.audience,main_skill:d.skill,
     grammar:d.grammar,vocabulary:d.vocab,communication_focus:"Communication",
-    critical_thinking:"Critical thinking",lesson_plan:{objectives:r.objectives||[],warm_up:r.warm_up||"",language_focus:r.language_focus||"",reading:r.reading||"",speaking:r.speaking||"",teacher_notes:r.teacher_notes||""},
+    critical_thinking:"Critical thinking",
+    lesson_plan:{objectives:r.objectives||[],warm_up:r.warm_up||"",language_focus:r.language_focus||"",reading:r.reading||"",speaking:r.speaking||"",teacher_notes:r.teacher_notes||""},
     worksheet:{items:r.worksheet||[]},answer_key:{quiz:r.quiz||[]},quiz:{items:r.quiz||[]},
     homework:{content:r.homework||""},visual_style:d.design,ai_model:"gpt-5.6-luna",generation_prompt:d
   };
-  const {error}=await supabase.from("fat_lessons").insert(payload);
+  const {error}=await supabaseClient.from("fat_lessons").insert(payload);
   if(error)console.warn("Lesson save failed:",error.message);
 }
 
@@ -135,43 +169,73 @@ function renderAI(r,d){
   '<div class="key"><b>TEACHER NOTES</b><p>'+esc(r.teacher_notes||"")+'</p></div></article>';
 }
 
-document.addEventListener("click",e=>{
-  const o=e.target.closest("[data-open]"); if(o)openGen(o.dataset.open);
-  const t=e.target.closest(".template"); if(t)openGen("sheet",t.dataset.template);
-});
+function bindUI(){
+  $$("nav button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.view)));
+  onClick("#closeGenerator",closeAll);
+  onClick("#closePreview",closeAll);
+  onClick("#back",()=>{if(page>1){page--;showPage();}});
+  onClick("#next",()=>{if(page<3){page++;showPage();}});
+  $$(".choice").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("selected")));
+  onClick("#generate",()=>{
+    const d={
+      topic:$("#topic")?.value||"English Lesson",level:$("#level")?.value||"B1",duration:$("#duration")?.value||"90 minutes",
+      audience:$("#audience")?.value||"Adults",skill:$("#skill")?.value||"Mixed skills",
+      grammar:$("#grammar")?.value||"",vocab:$("#vocab")?.value||"",design:$("#design")?.value||"Modern Classroom"
+    };
+    generateWithAI(d);
+  });
+  onClick("#print",()=>window.print());
+  onClick("#signIn",signIn);
+  onClick("#signUp",signUp);
+  onClick("#signOut",signOut);
+  onClick("#copyPlan",()=>{
+    const planLink=$("#planLink");
+    if(!planLink)return;
+    navigator.clipboard?.writeText(planLink.value).then(()=>{
+      const btn=$("#copyPlan"); if(btn)btn.textContent="✓ Copiado";
+    });
+  });
+  document.addEventListener("click",e=>{
+    const o=e.target.closest?.("[data-open]");
+    if(o){e.preventDefault();openGen(o.dataset.open);}
+    const t=e.target.closest?.(".template");
+    if(t){e.preventDefault();openGen("sheet",t.dataset.template);}
+  });
+}
 
-$$("nav button").forEach(b=>b.onclick=()=>show(b.dataset.view));
-$("#closeGenerator").onclick=closeAll;
-$("#closePreview").onclick=closeAll;
-$("#back").onclick=()=>{if(page>1){page--;showPage()}};
-$("#next").onclick=()=>{if(page<3){page++;showPage()}};
-$$(".choice").forEach(b=>b.onclick=()=>b.classList.toggle("selected"));
-
-$("#generate").onclick=()=>{
-  const d={
-    topic:$("#topic").value||"English Lesson",level:$("#level").value,duration:$("#duration").value,
-    audience:$("#audience").value,skill:$("#skill").value,grammar:$("#grammar").value,
-    vocab:$("#vocab").value,design:$("#design").value
-  };
-  generateWithAI(d);
-};
-
-$("#print").onclick=()=>window.print();
-$("#signIn").onclick=signIn;
-$("#signUp").onclick=signUp;
-$("#signOut").onclick=signOut;
-
-const planLink=document.querySelector("#planLink");
-if(planLink)planLink.value=location.href.split("#")[0]+"#admin";
-const copyPlan=document.querySelector("#copyPlan");
-if(copyPlan)copyPlan.onclick=()=>{
-  navigator.clipboard.writeText(planLink.value).then(()=>copyPlan.textContent="✓ Copiado");
-};
-
-supabase.auth.onAuthStateChange(()=>refreshAuth());
-refreshAuth();
-showPage();
+async function initSupabase(){
+  try{
+    if(window.supabase?.createClient){
+      supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    }else{
+      const script=document.createElement("script");
+      script.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+      script.onload=()=>{try{
+        supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+        supabaseClient.auth.onAuthStateChange(()=>refreshAuth());
+        refreshAuth();
+      }catch(e){console.error(e);setAuthMessage("Não foi possível iniciar o login.",true);}};
+      script.onerror=()=>setAuthMessage("Biblioteca de login não carregou. Verifique sua conexão ou bloqueador do navegador.",true);
+      document.head.appendChild(script);
+      return;
+    }
+    supabaseClient.auth.onAuthStateChange(()=>refreshAuth());
+    await refreshAuth();
+  }catch(error){
+    console.error("Supabase init error:",error);
+    setAuthMessage("Login temporariamente indisponível. Os menus continuam funcionando.",true);
+  }
+}
 
 function esc(s){
   return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
 }
+
+bindUI();
+showPage();
+
+const planLink=$("#planLink");
+if(planLink)planLink.value=location.href.split("#")[0]+"#admin";
+
+setAuthMessage("Carregando login...");
+initSupabase();
