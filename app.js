@@ -233,6 +233,7 @@ function esc(s){
 
 bindUI();
 showPage();
+window.__FAT_READY=true;
 
 const planLink=$("#planLink");
 if(planLink)planLink.value=location.href.split("#")[0]+"#admin";
